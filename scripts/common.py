@@ -6,7 +6,7 @@ import json
 import re
 from pathlib import Path
 
-PROFILES = ('lym10k', 't512n')
+PROFILES = ('e5', 'lym10k', 't512n')
 MODULES = ('sprd_sensor.ko', 'sprd_flash_drv.ko', 'sprd_camera.ko')
 TOOLCHAIN_METADATA = {
     'CONFIG_CC_VERSION_TEXT', 'CONFIG_CLANG_VERSION', 'CONFIG_LLD_VERSION',

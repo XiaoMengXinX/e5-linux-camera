@@ -22,6 +22,14 @@ def entry(profile='lym10k', release='6.18.54-lym10k-bringup1'):
 
 
 class ReleaseContract(unittest.TestCase):
+    def test_e5_build_profile_matches_the_running_kernel(self):
+        self.assertIn('e5', PROFILES)
+        config = Path(__file__).resolve().parents[1] / 'configs/e5.config'
+        text = config.read_text()
+        self.assertIn('CONFIG_LOCALVERSION="-e5-mobile4"', text)
+        self.assertIn('CONFIG_MODULES=y', text)
+        self.assertNotIn('CONFIG_COMPAT=y', text)
+
     def test_config_fingerprint(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / '.config'
@@ -76,7 +84,7 @@ class ReleaseContract(unittest.TestCase):
                             tar.add(file, arcname=str(file.relative_to(package)))
                 data['sha256'] = sha256(dist / data['asset'])
                 write_json(dist / f'{profile}.json', data)
-            self.assertEqual(len(read_packages(dist)), 2)
+            self.assertEqual(len(read_packages(dist)), len(PROFILES))
             path = dist / 't512n.json'
             damaged = json.loads(path.read_text())
             damaged['sha256'] = '0' * 64

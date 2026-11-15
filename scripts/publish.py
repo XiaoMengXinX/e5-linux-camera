@@ -138,7 +138,7 @@ def main():
         if entry['asset'] not in current_assets and entry['asset'] not in assets:
             raise ValueError(f"Retained asset missing: {entry['asset']}")
     write_json(dist / 'manifest.json', merged)
-    body = ('Camera modules for lym10k and t512n. '
+    body = ('Camera modules for e5, lym10k and t512n. '
             'Use manifest.json to select the matching profile and kernel release.\n\n'
             f'<!-- camera-run:{run[0]}:{run[1]} -->')
     if release is None:

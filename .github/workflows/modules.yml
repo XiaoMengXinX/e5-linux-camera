@@ -38,10 +38,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        profile: [lym10k, t512n]
+        profile: [e5, lym10k, t512n]
     env:
       CCACHE_DIR: ${{ github.workspace }}/work/ccache-${{ matrix.profile }}
-      CCACHE_MAXSIZE: 1G
+      CCACHE_MAXSIZE: 256M
       CCACHE_BASEDIR: ${{ github.workspace }}
       CCACHE_NOHASHDIR: 'true'
       CCACHE_COMPILERCHECK: content
@@ -73,7 +73,7 @@ jobs:
           restore-keys: ${{ steps.configure.outputs.ccache_prefix }}
       - name: Set compiler cache budget
         run: |
-          ccache --max-size=1G
+          ccache --max-size=256M
           ccache --zero-stats
       - name: Validate cached kernel or build complete kernel
         env:
@@ -138,13 +138,13 @@ jobs:
         with:
           name: camera-snapshot-${{ github.run_id }}-${{ github.run_attempt }}
           path: snapshot
-      - name: Collect both profile packages
+      - name: Collect all profile packages
         uses: actions/download-artifact@v4
         with:
           pattern: camera-build-*-${{ github.run_id }}-${{ github.run_attempt }}
           path: dist
           merge-multiple: true
-      - name: Publish both profiles and merged index
+      - name: Publish all profiles and merged index
         env:
           GH_TOKEN: ${{ github.token }}
         run: python3 scripts/publish.py --snapshot snapshot/inputs.json

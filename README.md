@@ -1,6 +1,6 @@
 # E5 Linux camera modules
 
-为lym10k和t512n构建与运行中kernel配置匹配的arm64相机模块：`sprd_sensor.ko`、`sprd_flash_drv.ko`和`sprd_camera.ko`。
+为e5、lym10k和t512n构建与运行中kernel配置匹配的arm64相机模块：`sprd_sensor.ko`、`sprd_flash_drv.ko`和`sprd_camera.ko`。
 
 ## 源码与配置
 
@@ -8,11 +8,11 @@
 
 源码沿革包含Motorola UNISOC camera的`4d7aa697120fedbe4b8d0a238ff6b4fed3d0c747`、Enceka/kernel_sprd_ums9158的`283a1a9e409d005e155fccab1031da13166b2950`及针对Linux6.18的移植，原有copyright与license声明保留。驱动及本仓库构建脚本遵循GPL-2.0-only，见[LICENSE](LICENSE)。
 
-`configs/lym10k.config`和`configs/t512n.config`是对应机型实机导出的完整配置。lym10k启用CONFIG_COMPAT，t512n禁用。构建不替换成defconfig，不改变debug/BTF配置；只在发布模块副本中移除debug和BTF sections。
+`configs/e5.config`、`configs/lym10k.config`和`configs/t512n.config`是对应机型实机导出的完整配置。lym10k启用CONFIG_COMPAT，e5和t512n禁用。构建不替换成defconfig，不改变debug/BTF配置；只在发布模块副本中移除debug和BTF sections。
 
 ## 构建
 
-GitHub Actions在每次branch push和workflow_dispatch时使用原生`ubuntu-24.04-arm`。resolve job先获取[sprd-linux-devs/e5-linux](https://github.com/sprd-linux-devs/e5-linux)当前main，从`tools/build-layout.json`的`local_kernel_build.revision`读取固定baseline，将driver、board、kernel commits保存为同次运行的snapshot。两个matrix job各自取这份snapshot，并行构建一个profile。两者全部成功后，独立publish job收集归档、再次核对snapshot并统一发布。发布仅在默认分支进行。
+GitHub Actions在每次branch push和workflow_dispatch时使用原生`ubuntu-24.04-arm`。resolve job先获取[sprd-linux-devs/e5-linux](https://github.com/sprd-linux-devs/e5-linux)当前main，从`tools/build-layout.json`的`local_kernel_build.revision`读取固定baseline，将driver、board、kernel commits保存为同次运行的snapshot。三个matrix job各自取这份snapshot，并行构建一个profile。全部成功后，独立publish job收集归档、再次核对snapshot并统一发布。发布仅在默认分支进行。
 
 每种机型使用独立kernel worktree，执行上游`devices/<profile>/prepare-kernel.py`，以LLVM18和`RUSTC=false`运行`olddefconfig`、`modules_prepare`以及完整`vmlinux modules`构建，生成匹配headers和Module.symvers后再编译三个外部模块。当前实机配置未启用Rust，固定探测结果以保持原配置；olddefconfig后的归一化配置指纹必须与实机配置一致，否则在完整编译前报告具体差异。上游prepare可能下载其固定commit和checksum约束的板级适配源码。任何下载、配置、编译或校验失败都会终止发布。
 
@@ -22,6 +22,7 @@ GitHub Actions在每次branch push和workflow_dispatch时使用原生`ubuntu-24.
 sudo bash scripts/install-deps.sh
 python3 -m unittest discover -s tests -v
 python3 scripts/prepare.py
+python3 scripts/build.py e5
 python3 scripts/build.py lym10k
 python3 scripts/build.py t512n
 ```
@@ -30,7 +31,7 @@ python3 scripts/build.py t512n
 
 完整kernel缓存只保存每个profile的objects目录。精确key包括kernel/board commits、完整输入config和olddefconfig后config的SHA256、实际toolchain及已安装package版本、构建脚本摘要、固定Kbuild时间与source/objects路径。每次先重新prepare并生成候选config，命中后校验provenance、有效config及vmlinux、Module.symvers和关键headers/checksums，直接跳过modules_prepare和vmlinux/modules。source文件mtime固定到baseline commit时间，避免fresh checkout触发依赖更新。缓存未命中时完整构建，成功后立即保存，再编译外部模块；校验失败直接报错。
 
-所有阶段使用`CC='ccache clang-18'`。ccache按profile隔离，设置CCACHE_BASEDIR、NOHASHDIR和固定KBUILD_BUILD_TIMESTAMP，不改动config。每个profile上限1GB，在新snapshot保存成功后删除同profile同branch的旧ccache snapshot。维持GitHub默认10GB总额度，完整objects与历史key按平台规则淘汰；workflow输出objects、vmlinux、ccache占用及剩余磁盘空间。
+所有阶段使用`CC='ccache clang-18'`。ccache按profile隔离，设置CCACHE_BASEDIR、NOHASHDIR和固定KBUILD_BUILD_TIMESTAMP，不改动config。每个profile上限256MB，在新snapshot保存成功后删除同profile同branch的旧ccache snapshot。维持GitHub默认10GB总额度，完整objects与历史key按平台规则淘汰；workflow输出objects、vmlinux、ccache占用及剩余磁盘空间。
 
 ## Release协议
 
@@ -90,7 +91,7 @@ CONFIG_LD_VERSION
 CONFIG_PAHOLE_VERSION
 ```
 
-两种profile全部成功且归档校验通过后，发布器读取旧索引，按`profile + kernel_release`合并；相同key覆盖，其他entry与asset保留。首次发布先创建draft，上传两个归档，再上传全局manifest，最后公开release。后续发布同样最后上传manifest。有效config、输入config摘要及source/toolchain记录另存Actions artifact。
+三种profile全部成功且归档校验通过后，发布器读取旧索引，按`profile + kernel_release`合并；相同key覆盖，其他entry与asset保留。首次发布先创建draft，上传三个归档，再上传全局manifest，最后公开release。后续发布同样最后上传manifest。有效config、输入config摘要及source/toolchain记录另存Actions artifact。
 
 所有运行共享concurrency队列，`cancel-in-progress: false`。发布器同时检查默认分支HEAD及release body中的run编号，拒绝旧commit或较旧run覆盖已发布结果。首次接管已有release时，要求已有本发布器的run marker；缺少marker或旧索引异常时直接失败，需维护者检查。
 
