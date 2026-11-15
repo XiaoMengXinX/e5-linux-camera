@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: GPL-2.0-only
 """Build a complete profile kernel and package its external camera modules."""
 import argparse
+import difflib
 import json
 import os
 import platform
@@ -12,7 +13,7 @@ import subprocess
 import sys
 import tarfile
 
-from common import MODULES, PROFILES, config_sha256, sha256, validate_entry, write_json
+from common import MODULES, PROFILES, TOOLCHAIN_METADATA, config_sha256, sha256, validate_entry, write_json
 from kernel_cache import cache_key, digest, record_kernel, validate_kernel
 
 
@@ -22,6 +23,20 @@ def run(command):
 
 def output(command):
     return subprocess.check_output([str(item) for item in command], text=True).strip()
+
+
+def verify_running_config(reference, effective):
+    if config_sha256(reference) == config_sha256(effective):
+        return
+
+    def lines(path):
+        return sorted(line + '\n' for line in path.read_text().splitlines()
+                      if re.fullmatch(r'CONFIG_[A-Za-z0-9_]+=.*', line)
+                      and line.split('=', 1)[0] not in TOOLCHAIN_METADATA)
+
+    difference = ''.join(difflib.unified_diff(
+        lines(reference), lines(effective), fromfile=str(reference), tofile=str(effective)))
+    raise ValueError('olddefconfig differs from the running kernel config:\n' + difference)
 
 
 def build_package_versions():
@@ -87,8 +102,9 @@ def main():
                       KBUILD_BUILD_HOST='camera-builder', KBUILD_BUILD_VERSION='1',
                       CCACHE_BASEDIR=str(root), CCACHE_NOHASHDIR='true',
                       CCACHE_COMPILERCHECK='content')
+    # The running configs were generated without Rust compiler feature probes.
     make = ['make', '--no-print-directory', '-C', kernel, 'ARCH=arm64', 'LLVM=-18',
-            'CC=ccache clang-18', 'LOCALVERSION=', f'-j{args.jobs}']
+            'CC=ccache clang-18', 'RUSTC=false', 'LOCALVERSION=', f'-j{args.jobs}']
     if stage in ('all', 'configure'):
         toolchain = {}
         for tool in ('clang-18', 'ld.lld-18', 'llvm-ar-18', 'llvm-nm-18',
@@ -111,9 +127,7 @@ def main():
         shutil.copyfile(root / 'configs' / f'{args.profile}.config', candidate / '.config')
         run(make + [f'O={candidate}', 'olddefconfig'])
         config = candidate / '.config'
-        compat = 'CONFIG_COMPAT=y' if args.profile == 'lym10k' else '# CONFIG_COMPAT is not set'
-        if compat not in config.read_text().splitlines():
-            raise ValueError('olddefconfig changed the profile CONFIG_COMPAT contract')
+        verify_running_config(root / 'configs' / f'{args.profile}.config', config)
         release = output(make + [f'O={candidate}', '-s', 'kernelrelease'])
         if not re.fullmatch(r'[A-Za-z0-9_.+-]+', release):
             raise ValueError(f'Invalid kernel release: {release}')
@@ -121,7 +135,7 @@ def main():
                       board_commit=inputs['board_commit'], kernel_release=release,
                       input_config_sha256=sha256(root / 'configs' / f'{args.profile}.config'),
                       effective_config_sha256=sha256(config), config_sha256=config_sha256(config),
-                      toolchain=toolchain, timestamp=timestamp,
+                      toolchain=toolchain, rustc='false', timestamp=timestamp,
                       kernel_path=str(kernel), objects_path=str(objects),
                       scripts={name: sha256(root / 'scripts' / name) for name in
                                ('build.py', 'kernel_cache.py', 'prepare.py', 'common.py', 'install-deps.sh')})

@@ -14,7 +14,7 @@
 
 GitHub Actions在每次branch push和workflow_dispatch时使用原生`ubuntu-24.04-arm`。resolve job先获取[sprd-linux-devs/e5-linux](https://github.com/sprd-linux-devs/e5-linux)当前main，从`tools/build-layout.json`的`local_kernel_build.revision`读取固定baseline，将driver、board、kernel commits保存为同次运行的snapshot。两个matrix job各自取这份snapshot，并行构建一个profile。两者全部成功后，独立publish job收集归档、再次核对snapshot并统一发布。发布仅在默认分支进行。
 
-每种机型使用独立kernel worktree，执行上游`devices/<profile>/prepare-kernel.py`，以LLVM18运行`olddefconfig`、`modules_prepare`以及完整`vmlinux modules`构建，生成匹配headers和Module.symvers后再编译三个外部模块。上游prepare可能下载其固定commit和checksum约束的板级适配源码。任何下载、配置、编译或校验失败都会终止发布。
+每种机型使用独立kernel worktree，执行上游`devices/<profile>/prepare-kernel.py`，以LLVM18和`RUSTC=false`运行`olddefconfig`、`modules_prepare`以及完整`vmlinux modules`构建，生成匹配headers和Module.symvers后再编译三个外部模块。当前实机配置未启用Rust，固定探测结果以保持原配置；olddefconfig后的归一化配置指纹必须与实机配置一致，否则在完整编译前报告具体差异。上游prepare可能下载其固定commit和checksum约束的板级适配源码。任何下载、配置、编译或校验失败都会终止发布。
 
 在Ubuntu24.04 arm64环境中，从仓库根目录执行：
 

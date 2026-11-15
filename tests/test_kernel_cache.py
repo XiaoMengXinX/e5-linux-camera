@@ -7,7 +7,7 @@ import unittest
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
-from build import build_package_versions, normalize_source_mtimes, prepare_kernel_objects
+from build import build_package_versions, normalize_source_mtimes, prepare_kernel_objects, verify_running_config
 from common import config_sha256, sha256
 from kernel_cache import REQUIRED_FILES, cache_key, record_kernel, validate_kernel
 
@@ -37,6 +37,16 @@ class KernelCache(unittest.TestCase):
                            toolchain={'clang': '18.1.3', 'pahole': '1.25'},
                            scripts={'build.py': 'd' * 64}, timestamp='fixed',
                            kernel_path='/kernel', objects_path='/objects')
+
+    def test_effective_config_matches_running_kernel_before_build(self):
+        reference = self.root / 'running.config'
+        effective = self.root / 'effective.config'
+        reference.write_text('CONFIG_RUSTC_VERSION=0\nCONFIG_COMPAT=y\nCONFIG_CLANG_VERSION=180108\n')
+        effective.write_text('CONFIG_COMPAT=y\nCONFIG_RUSTC_VERSION=0\nCONFIG_CLANG_VERSION=180103\n')
+        verify_running_config(reference, effective)
+        effective.write_text('CONFIG_COMPAT=y\nCONFIG_RUSTC_VERSION=109901\nCONFIG_RUSTC_HAS_COERCE_POINTEE=y\n')
+        with self.assertRaisesRegex(ValueError, 'RUSTC_HAS_COERCE_POINTEE'):
+            verify_running_config(reference, effective)
 
     def test_key_covers_profile_source_configs_tools_scripts_and_paths(self):
         baseline = cache_key(self.recipe)
