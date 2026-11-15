@@ -1,0 +1,7 @@
+obj-m := sprd_sensor.o
+sprd_sensor-y := sprd_sensor_core.o sprd_sensor_drv.o cam_mm_clocks.o csi2/sprd/receiver_r3p2/csi_api.o csi2/sprd/receiver_r3p2/csi_driver.o
+sprd_sensor-$(CONFIG_COMPAT) += compat_sensor_drv.o
+ccflags-y += -I$(M) -I$(M)/../os_adapt/linux -I$(M)/../interface -I$(M)/../interface/cam_sys
+ccflags-y += -I$(M)/csi2/sprd/receiver_r3p2 -I$(M)/../power/kernel
+ccflags-y += -DMCLK_NEW_PROCESS -DMCLK_NEW_PROCESS1
+ccflags-y += -I$(M)/../headers
