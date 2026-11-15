@@ -14,29 +14,137 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  modules:
+  resolve:
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 360
     steps:
       - uses: actions/checkout@v4
+      - name: Check release and cache contracts
+        run: python3 -m unittest discover -s tests -v
+      - name: Resolve one board main and kernel baseline snapshot
+        run: python3 scripts/prepare.py --resolve-only
+      - uses: actions/upload-artifact@v4
+        with:
+          name: camera-snapshot-${{ github.run_id }}-${{ github.run_attempt }}
+          path: work/inputs.json
+          if-no-files-found: error
+
+  modules:
+    needs: resolve
+    permissions:
+      contents: read
+      actions: write
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: [lym10k, t512n]
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/work/ccache-${{ matrix.profile }}
+      CCACHE_MAXSIZE: 1G
+      CCACHE_BASEDIR: ${{ github.workspace }}
+      CCACHE_NOHASHDIR: 'true'
+      CCACHE_COMPILERCHECK: content
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: camera-snapshot-${{ github.run_id }}-${{ github.run_attempt }}
+          path: snapshot
       - name: Install LLVM18 and kernel build dependencies
         run: sudo bash scripts/install-deps.sh
-      - name: Check release contract
-        run: python3 -m unittest discover -s tests -v
-      - name: Resolve current board main and fixed kernel baseline
-        run: python3 scripts/prepare.py
-      - name: Build lym10k kernel and modules
-        run: python3 scripts/build.py lym10k
-      - name: Build t512n kernel and modules
-        run: python3 scripts/build.py t512n
-      - name: Preserve effective configs and build inputs
-        uses: actions/upload-artifact@v4
+      - name: Prepare the fixed source snapshot
+        run: python3 scripts/prepare.py --snapshot snapshot/inputs.json
+      - name: Configure profile and compute exact cache identity
+        id: configure
+        run: python3 scripts/build.py '${{ matrix.profile }}' --stage configure
+      - name: Restore exact complete kernel build
+        id: kernel-cache
+        uses: actions/cache/restore@v4
         with:
-          name: camera-build-${{ github.run_id }}-${{ github.run_attempt }}
-          path: dist/
-          if-no-files-found: error
-      - name: Publish both profiles and merged index
-        if: github.ref_name == github.event.repository.default_branch
+          path: work/objects-${{ matrix.profile }}
+          key: ${{ steps.configure.outputs.kernel_key }}
+      - name: Restore profile compiler cache
+        id: ccache
+        uses: actions/cache/restore@v4
+        with:
+          path: work/ccache-${{ matrix.profile }}
+          key: ${{ steps.configure.outputs.ccache_prefix }}${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: ${{ steps.configure.outputs.ccache_prefix }}
+      - name: Set compiler cache budget
+        run: |
+          ccache --max-size=1G
+          ccache --zero-stats
+      - name: Validate cached kernel or build complete kernel
+        env:
+          KERNEL_CACHE_HIT: ${{ steps.kernel-cache.outputs.cache-hit }}
+        run: |
+          cache_args=()
+          if [[ "$KERNEL_CACHE_HIT" == 'true' ]]; then
+            cache_args+=(--cache-hit)
+          fi
+          python3 scripts/build.py '${{ matrix.profile }}' --stage kernel "${cache_args[@]}"
+      # Save immediately: an external driver failure must not lose a cold kernel build.
+      - name: Save complete kernel build
+        if: steps.kernel-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: work/objects-${{ matrix.profile }}
+          key: ${{ steps.configure.outputs.kernel_key }}
+      - name: Compile and package external camera modules
+        run: python3 scripts/build.py '${{ matrix.profile }}' --stage modules
+      - name: Report compiler cache and disk usage
+        if: always()
+        run: |
+          if command -v ccache >/dev/null; then
+            ccache --cleanup
+            ccache --show-stats
+          fi
+          for path in 'work/objects-${{ matrix.profile }}' 'work/objects-${{ matrix.profile }}/vmlinux' "$CCACHE_DIR"; do
+            if [[ -e "$path" ]]; then
+              du -sh "$path"
+            fi
+          done
+          df -h .
+      - name: Save profile compiler cache
+        id: save-ccache
+        if: always() && steps.ccache.outcome == 'success'
+        uses: actions/cache/save@v4
+        with:
+          path: work/ccache-${{ matrix.profile }}
+          key: ${{ steps.ccache.outputs.cache-primary-key }}
+      - name: Retain one compiler cache snapshot per profile and branch
+        if: always() && steps.save-ccache.outcome == 'success'
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 scripts/publish.py
+          PROFILE: ${{ matrix.profile }}
+          CCACHE_KEY: ${{ steps.ccache.outputs.cache-primary-key }}
+        run: python3 scripts/prune-ccache.py
+      - name: Preserve package, effective config and build inputs
+        uses: actions/upload-artifact@v4
+        with:
+          name: camera-build-${{ matrix.profile }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: dist/
+          if-no-files-found: error
+
+  publish:
+    needs: [resolve, modules]
+    if: github.ref_name == github.event.repository.default_branch
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: camera-snapshot-${{ github.run_id }}-${{ github.run_attempt }}
+          path: snapshot
+      - name: Collect both profile packages
+        uses: actions/download-artifact@v4
+        with:
+          pattern: camera-build-*-${{ github.run_id }}-${{ github.run_attempt }}
+          path: dist
+          merge-multiple: true
+      - name: Publish both profiles and merged index
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/publish.py --snapshot snapshot/inputs.json

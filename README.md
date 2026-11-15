@@ -12,7 +12,7 @@
 
 ## 构建
 
-GitHub Actions在每次branch push和workflow_dispatch时使用原生`ubuntu-24.04-arm`，依次构建两个profile。发布仅在默认分支进行。每次运行先获取[sprd-linux-devs/e5-linux](https://github.com/sprd-linux-devs/e5-linux)当前main，从`tools/build-layout.json`的`local_kernel_build.revision`读取固定baseline，再获取[sprd-linux-devs/linux](https://github.com/sprd-linux-devs/linux)对应commit。同次运行的两个profile共用这份source snapshot。
+GitHub Actions在每次branch push和workflow_dispatch时使用原生`ubuntu-24.04-arm`。resolve job先获取[sprd-linux-devs/e5-linux](https://github.com/sprd-linux-devs/e5-linux)当前main，从`tools/build-layout.json`的`local_kernel_build.revision`读取固定baseline，将driver、board、kernel commits保存为同次运行的snapshot。两个matrix job各自取这份snapshot，并行构建一个profile。两者全部成功后，独立publish job收集归档、再次核对snapshot并统一发布。发布仅在默认分支进行。
 
 每种机型使用独立kernel worktree，执行上游`devices/<profile>/prepare-kernel.py`，以LLVM18运行`olddefconfig`、`modules_prepare`以及完整`vmlinux modules`构建，生成匹配headers和Module.symvers后再编译三个外部模块。上游prepare可能下载其固定commit和checksum约束的板级适配源码。任何下载、配置、编译或校验失败都会终止发布。
 
@@ -26,7 +26,11 @@ python3 scripts/build.py lym10k
 python3 scripts/build.py t512n
 ```
 
-`prepare.py`要求仓库已有commit，用其记录driver_commit。`work/`保存本次运行的源码和objects，`dist/`保存归档及构建记录；再次构建应使用新的work目录。可通过`--work`、`--dist`指定相对或绝对路径。`build.py --configure-only`仅执行上游prepare和配置阶段。构建不使用跨运行objects cache，确保每次都根据实际source和完整config生成headers与符号表。
+`prepare.py`要求仓库已有commit，用其记录driver_commit；支持`--board-ref <ref>`固定board版本、`--resolve-only`仅解析snapshot、`--snapshot <inputs.json>`严格复用已解析版本。`work/`保存本次运行的源码和objects，`dist/`保存归档及构建记录；再次构建应使用新的work目录。可通过`--work`、`--dist`指定路径。`build.py --configure-only`仅执行上游prepare和配置阶段，CI通过`--stage configure/kernel/modules`分别执行三个阶段。
+
+完整kernel缓存只保存每个profile的objects目录。精确key包括kernel/board commits、完整输入config和olddefconfig后config的SHA256、实际toolchain及已安装package版本、构建脚本摘要、固定Kbuild时间与source/objects路径。每次先重新prepare并生成候选config，命中后校验provenance、有效config及vmlinux、Module.symvers和关键headers/checksums，直接跳过modules_prepare和vmlinux/modules。source文件mtime固定到baseline commit时间，避免fresh checkout触发依赖更新。缓存未命中时完整构建，成功后立即保存，再编译外部模块；校验失败直接报错。
+
+所有阶段使用`CC='ccache clang-18'`。ccache按profile隔离，设置CCACHE_BASEDIR、NOHASHDIR和固定KBUILD_BUILD_TIMESTAMP，不改动config。每个profile上限1GB，在新snapshot保存成功后删除同profile同branch的旧ccache snapshot。维持GitHub默认10GB总额度，完整objects与历史key按平台规则淘汰；workflow输出objects、vmlinux、ccache占用及剩余磁盘空间。
 
 ## Release协议
 

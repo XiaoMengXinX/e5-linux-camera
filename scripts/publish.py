@@ -102,9 +102,16 @@ def read_packages(dist):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--dist', type=Path, default=Path('dist'))
+    parser.add_argument('--snapshot', type=Path, help='Require the resolve job source snapshot')
     args = parser.parse_args()
     dist = args.dist.resolve()
     entries = read_packages(dist)
+    if args.snapshot:
+        expected = json.loads(args.snapshot.read_text())
+        for entry in entries:
+            if any(entry[field] != expected[field]
+                   for field in ('driver_commit', 'board_commit', 'kernel_commit')):
+                raise ValueError('Artifacts differ from the resolve job source snapshot')
     commit = os.environ['GITHUB_SHA']
     if any(entry['driver_commit'] != commit for entry in entries):
         raise ValueError('Artifacts do not belong to this workflow commit')

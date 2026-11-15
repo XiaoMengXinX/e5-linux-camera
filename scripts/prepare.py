@@ -22,13 +22,25 @@ def revision(repo):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--work', type=Path, default=Path('work'))
+    parser.add_argument('--board-ref', default='main', help='Board branch or fixed commit')
+    parser.add_argument('--snapshot', type=Path, help='Use the resolve job inputs.json snapshot')
+    parser.add_argument('--resolve-only', action='store_true', help='Resolve board and baseline without fetching Linux')
     args = parser.parse_args()
     work = args.work.resolve()
     work.mkdir(parents=True, exist_ok=True)
     board = work / 'board'
     kernel = work / 'linux'
-    run('git', 'clone', '--depth=1', '--branch=main',
-        'https://github.com/sprd-linux-devs/e5-linux.git', str(board))
+    root = Path(__file__).resolve().parents[1]
+    expected = json.loads(args.snapshot.read_text()) if args.snapshot else None
+    driver_commit = revision(root)
+    if expected and expected['driver_commit'] != driver_commit:
+        raise ValueError('Snapshot belongs to a different driver commit')
+    board_ref = expected['board_commit'] if expected else args.board_ref
+    run('git', 'init', str(board))
+    run('git', '-C', str(board), 'remote', 'add', 'origin',
+        'https://github.com/sprd-linux-devs/e5-linux.git')
+    run('git', '-C', str(board), 'fetch', '--depth=1', 'origin', board_ref)
+    run('git', '-C', str(board), 'checkout', '--detach', 'FETCH_HEAD')
     layout = json.loads((board / 'tools/build-layout.json').read_text())
     baseline = layout['local_kernel_build']['revision']
     if not re.fullmatch(r'[0-9a-f]{40}', baseline):
@@ -38,6 +50,13 @@ def main():
             raise ValueError(f'Upstream layout has no {profile} profile')
         if not (board / 'devices' / profile / 'prepare-kernel.py').is_file():
             raise FileNotFoundError(f'Missing prepare-kernel.py for {profile}')
+    inputs = {'driver_commit': driver_commit, 'board_commit': revision(board),
+              'kernel_commit': baseline}
+    if expected and inputs != expected:
+        raise ValueError('Resolved board/kernel differs from the requested snapshot')
+    write_json(work / 'inputs.json', inputs)
+    if args.resolve_only:
+        return
     run('git', 'init', str(kernel))
     run('git', '-C', str(kernel), 'remote', 'add', 'origin',
         'https://github.com/sprd-linux-devs/linux.git')
@@ -45,11 +64,6 @@ def main():
     run('git', '-C', str(kernel), 'checkout', '--detach', 'FETCH_HEAD')
     if revision(kernel) != baseline:
         raise ValueError('Fetched kernel differs from layout baseline')
-    root = Path(__file__).resolve().parents[1]
-    write_json(work / 'inputs.json', {
-        'driver_commit': revision(root), 'board_commit': revision(board),
-        'kernel_commit': baseline,
-    })
 
 
 if __name__ == '__main__':
