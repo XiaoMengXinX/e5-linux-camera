@@ -595,6 +595,11 @@ static int __init flash_init(void)
 		platform_driver_unregister(&sprd_flash_drvier);
 		goto exit;
 	}
+	ret = sprd_flash_aw3641_register();
+	if (ret) {
+		platform_device_unregister(pdev);
+		platform_driver_unregister(&sprd_flash_drvier);
+	}
 
 exit:
 	return ret;
@@ -602,6 +607,7 @@ exit:
 
 static void __exit flash_exit(void)
 {
+	sprd_flash_aw3641_unregister();
 	platform_device_unregister(pdev);
 	platform_driver_unregister(&sprd_flash_drvier);
 }

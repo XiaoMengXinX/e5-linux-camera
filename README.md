@@ -6,6 +6,8 @@
 
 `source/camera`采用实机使用的vendor camera移植源码，保留sensor、flash driver、camera system及其共享headers。camera system选择qogirn6l适配（使用qogirn6pro实现），CSI选择receiver_r3p2。sensor保留由CONFIG_COMPAT控制的compat实现。
 
+`sprd_flash_drv`包含与`sprd,flash-aw3641`设备树节点匹配的AW3641常亮补光后端，通过`/sys/class/leds/aw3641:white:torch/brightness`接受`0`（关闭）和`1`（开启），也支持vendor torch和preflash控制。使用方式依据[公开AW3641驱动](https://github.com/Enceka/kernel_sprd_ums9158/blob/main/drivers/media/platform/sprd/camera/flash/aw3641/flash_ic_aw3641_drv.c)。调用方在开灯期间持有`/dev/sprd_flash`，关闭文件时驱动关灯；模块卸载和系统关机时也会关灯。拍照同步的高亮闪光模式尚未实现。
+
 源码沿革包含Motorola UNISOC camera的`4d7aa697120fedbe4b8d0a238ff6b4fed3d0c747`、Enceka/kernel_sprd_ums9158的`283a1a9e409d005e155fccab1031da13166b2950`及针对Linux6.18的移植，原有copyright与license声明保留。驱动及本仓库构建脚本遵循GPL-2.0-only，见[LICENSE](LICENSE)。
 
 `configs/e5.config`、`configs/lym10k.config`和`configs/t512n.config`是对应机型实机导出的完整配置。lym10k启用CONFIG_COMPAT，e5和t512n禁用。构建不替换成defconfig，不改变debug/BTF配置；只在发布模块副本中移除debug和BTF sections。

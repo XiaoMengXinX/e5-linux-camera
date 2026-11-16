@@ -53,6 +53,8 @@ int sprd_flash_cfg(struct sprd_flash_cfg_param *parm);
 int sprd_flash_register(const struct sprd_flash_driver_ops *ops,
 			void *drvd,
 			uint8_t flash_idx);
+int sprd_flash_aw3641_register(void);
+void sprd_flash_aw3641_unregister(void);
 struct sprd_flash_capacity sprd_flash_get_info(uint8_t flash_idx, uint8_t led_idx,
 			struct sprd_flash_capacity *flash_capacity);
 #endif
