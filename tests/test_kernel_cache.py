@@ -12,9 +12,9 @@ from common import config_sha256, sha256
 from kernel_cache import REQUIRED_FILES, cache_key, record_kernel, validate_kernel
 
 spec = importlib.util.spec_from_file_location(
-    'prune_ccache', Path(__file__).resolve().parents[1] / 'scripts/prune-ccache.py')
-prune_ccache = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(prune_ccache)
+    'prune_cache', Path(__file__).resolve().parents[1] / 'scripts/prune-cache.py')
+prune_cache = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(prune_cache)
 
 
 class KernelCache(unittest.TestCase):
@@ -126,8 +126,8 @@ class KernelCache(unittest.TestCase):
         current = {'id': 2, 'key': prefix + 'current', 'ref': ref}
         other = {'id': 3, 'key': 'ccache-v1-t512n-old', 'ref': ref}
         branch = {'id': 4, 'key': prefix + 'branch', 'ref': 'refs/heads/dev'}
-        self.assertEqual(prune_ccache.obsolete_caches([old], prefix, current['key'], ref), [])
-        self.assertEqual(prune_ccache.obsolete_caches([old, current, other, branch],
+        self.assertEqual(prune_cache.obsolete_caches([old], prefix, current['key'], ref), [])
+        self.assertEqual(prune_cache.obsolete_caches([old, current, other, branch],
                                                      prefix, current['key'], ref), [1])
 
 

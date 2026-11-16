@@ -86,11 +86,21 @@ jobs:
           python3 scripts/build.py '${{ matrix.profile }}' --stage kernel "${cache_args[@]}"
       # Save immediately: an external driver failure must not lose a cold kernel build.
       - name: Save complete kernel build
+        id: save-kernel-cache
         if: steps.kernel-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:
           path: work/objects-${{ matrix.profile }}
           key: ${{ steps.configure.outputs.kernel_key }}
+      - name: Retain one complete kernel cache per profile and branch
+        if: steps.kernel-cache.outputs.cache-hit == 'true' || steps.save-kernel-cache.outcome == 'success'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PROFILE: ${{ matrix.profile }}
+          CACHE_PREFIX: kernel-v1-${{ matrix.profile }}-
+          CACHE_KEY: ${{ steps.configure.outputs.kernel_key }}
+        run: python3 scripts/prune-cache.py
       - name: Compile and package external camera modules
         run: python3 scripts/build.py '${{ matrix.profile }}' --stage modules
       - name: Report compiler cache and disk usage
@@ -120,7 +130,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           PROFILE: ${{ matrix.profile }}
           CCACHE_KEY: ${{ steps.ccache.outputs.cache-primary-key }}
-        run: python3 scripts/prune-ccache.py
+        run: python3 scripts/prune-cache.py
       - name: Preserve package, effective config and build inputs
         uses: actions/upload-artifact@v4
         with:

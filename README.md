@@ -31,7 +31,7 @@ python3 scripts/build.py t512n
 
 完整kernel缓存只保存每个profile的objects目录。精确key包括kernel/board commits、完整输入config和olddefconfig后config的SHA256、实际toolchain及已安装package版本、构建脚本摘要、固定Kbuild时间与source/objects路径。每次先重新prepare并生成候选config，命中后校验provenance、有效config及vmlinux、Module.symvers和关键headers/checksums，直接跳过modules_prepare和vmlinux/modules。source文件mtime固定到baseline commit时间，避免fresh checkout触发依赖更新。缓存未命中时完整构建，成功后立即保存，再编译外部模块；校验失败直接报错。
 
-所有阶段使用`CC='ccache clang-18'`。ccache按profile隔离，设置CCACHE_BASEDIR、NOHASHDIR和固定KBUILD_BUILD_TIMESTAMP，不改动config。每个profile上限256MB，在新snapshot保存成功后删除同profile同branch的旧ccache snapshot。维持GitHub默认10GB总额度，完整objects与历史key按平台规则淘汰；workflow输出objects、vmlinux、ccache占用及剩余磁盘空间。
+所有阶段使用`CC='ccache clang-18'`。ccache按profile隔离，设置CCACHE_BASEDIR、NOHASHDIR和固定KBUILD_BUILD_TIMESTAMP，不改动config。每个profile上限256MB，在新snapshot保存成功后删除同profile同branch的旧ccache snapshot。完整kernel objects缓存也按profile和branch只保留当前有效key，避免源码或配置变化后旧的约1GB缓存持续占用配额。维持GitHub默认10GB总额度；workflow输出objects、vmlinux、ccache占用及剩余磁盘空间。
 
 ## Release协议
 
