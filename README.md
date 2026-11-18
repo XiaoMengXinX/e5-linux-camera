@@ -6,7 +6,7 @@
 
 `source/camera`采用实机使用的vendor camera移植源码，保留sensor、flash driver、camera system及其共享headers。camera system选择qogirn6l适配（使用qogirn6pro实现），CSI选择receiver_r3p2。sensor保留由CONFIG_COMPAT控制的compat实现。
 
-`sprd_flash_drv`包含与`sprd,flash-aw3641`设备树节点匹配的AW3641常亮补光后端，通过`/sys/class/leds/aw3641:white:torch/brightness`接受`0`（关闭）和`1`（开启），也支持vendor torch和preflash控制。使用方式依据[公开AW3641驱动](https://github.com/Enceka/kernel_sprd_ums9158/blob/main/drivers/media/platform/sprd/camera/flash/aw3641/flash_ic_aw3641_drv.c)。调用方在开灯期间持有`/dev/sprd_flash`，关闭文件时驱动关灯；模块卸载和系统关机时也会关灯。拍照同步的高亮闪光模式尚未实现。
+E5常亮补光由固件提供的`e5-aw3641-torch`模块管理，通过`/sys/class/leds/e5:white:torch/brightness`接受`0`（关闭）和`1`（开启）。相机模块包保留`sprd_flash_drv`，提供`sprd_camera`依赖的vendor flash接口；AW3641硬件由系统LED驱动控制。E5构建配置启用`CONFIG_LEDS_E5_AW3641=m`，与上游新版固件一致。拍照同步的高亮闪光模式尚未实现。
 
 源码沿革包含Motorola UNISOC camera的`4d7aa697120fedbe4b8d0a238ff6b4fed3d0c747`、Enceka/kernel_sprd_ums9158的`283a1a9e409d005e155fccab1031da13166b2950`及针对Linux6.18的移植，原有copyright与license声明保留。驱动及本仓库构建脚本遵循GPL-2.0-only，见[LICENSE](LICENSE)。
 
@@ -14,7 +14,7 @@
 
 ## 构建
 
-GitHub Actions在每次branch push和workflow_dispatch时使用原生`ubuntu-24.04-arm`。resolve job先获取[sprd-linux-devs/e5-linux](https://github.com/sprd-linux-devs/e5-linux)当前main，从`tools/build-layout.json`的`local_kernel_build.revision`读取固定baseline，将driver、board、kernel commits保存为同次运行的snapshot。三个matrix job各自取这份snapshot，并行构建一个profile。全部成功后，独立publish job收集归档、再次核对snapshot并统一发布。发布仅在默认分支进行。
+GitHub Actions在每次branch push和workflow_dispatch时使用原生`ubuntu-24.04-arm`。resolve job先获取[kanoqwq/e5-linux](https://github.com/kanoqwq/e5-linux)当前main，从`tools/build-layout.json`的`local_kernel_build.revision`读取固定baseline，将driver、board、kernel commits保存为同次运行的snapshot。三个matrix job各自取这份snapshot，并行构建一个profile。全部成功后，独立publish job收集归档、再次核对snapshot并统一发布。发布仅在默认分支进行。
 
 每种机型使用独立kernel worktree，执行上游`devices/<profile>/prepare-kernel.py`，以LLVM18和`RUSTC=false`运行`olddefconfig`、`modules_prepare`以及完整`vmlinux modules`构建，生成匹配headers和Module.symvers后再编译三个外部模块。当前实机配置未启用Rust，固定探测结果以保持原配置；olddefconfig后的归一化配置指纹必须与实机配置一致，否则在完整编译前报告具体差异。上游prepare可能下载其固定commit和checksum约束的板级适配源码。任何下载、配置、编译或校验失败都会终止发布。
 

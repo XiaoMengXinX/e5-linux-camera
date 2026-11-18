@@ -38,7 +38,7 @@ def main():
     board_ref = expected['board_commit'] if expected else args.board_ref
     run('git', 'init', str(board))
     run('git', '-C', str(board), 'remote', 'add', 'origin',
-        'https://github.com/sprd-linux-devs/e5-linux.git')
+        'https://github.com/kanoqwq/e5-linux.git')
     run('git', '-C', str(board), 'fetch', '--depth=1', 'origin', board_ref)
     run('git', '-C', str(board), 'checkout', '--detach', 'FETCH_HEAD')
     layout = json.loads((board / 'tools/build-layout.json').read_text())
